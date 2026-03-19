@@ -1,0 +1,5 @@
+build/
+Resources/katex.min.js
+Resources/katex.min.css
+Resources/fonts/
+.DS_Store
