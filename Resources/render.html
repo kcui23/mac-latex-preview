@@ -19,13 +19,52 @@
             display: inline-block;
             -webkit-backdrop-filter: blur(20px);
             backdrop-filter: blur(20px);
+            max-height: 580px;
+            overflow-y: auto;
+        }
+        #container::-webkit-scrollbar {
+            width: 6px;
+        }
+        #container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #container::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
         }
         #formula {
             font-size: 22px;
             line-height: 1.4;
         }
+        #formula.mixed-content {
+            font-size: 15px;
+            line-height: 1.8;
+        }
         .katex, .katex * {
             color: #f0f0f0 !important;
+        }
+        .plain-text {
+            color: #e0e0e0;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .latex-display {
+            display: block;
+            text-align: center;
+            margin: 12px 0;
+            font-size: 20px;
+        }
+        .latex-inline {
+            display: inline;
+        }
+        .latex-error {
+            color: #ff6b6b;
+            font-family: 'SF Mono', Menlo, monospace;
+            font-size: 13px;
+            background: rgba(255, 107, 107, 0.1);
+            padding: 2px 4px;
+            border-radius: 3px;
         }
         #error {
             color: #ff6b6b;
@@ -44,6 +83,7 @@
         function renderLatex(latex, displayMode) {
             var formulaEl = document.getElementById('formula');
             var errorEl = document.getElementById('error');
+            formulaEl.className = '';
 
             try {
                 katex.render(latex, formulaEl, {
@@ -60,7 +100,99 @@
                 errorEl.style.display = 'block';
             }
 
-            // Report rendered size to Swift
+            reportSize();
+        }
+
+        function renderMixed(text) {
+            var formulaEl = document.getElementById('formula');
+            var errorEl = document.getElementById('error');
+            errorEl.style.display = 'none';
+            formulaEl.style.display = 'block';
+            formulaEl.innerHTML = '';
+
+            // Regex: $$...$$, \[...\], \(...\), $...$ (order matters: $$ before $)
+            var pattern = /(\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|\$[^\$\n]+?\$)/g;
+            var match;
+            var lastIndex = 0;
+            var hasFormulas = false;
+
+            while ((match = pattern.exec(text)) !== null) {
+                hasFormulas = true;
+
+                // Plain text before this match
+                if (match.index > lastIndex) {
+                    var span = document.createElement('span');
+                    span.className = 'plain-text';
+                    span.textContent = text.substring(lastIndex, match.index);
+                    formulaEl.appendChild(span);
+                }
+
+                // Parse delimiter and render
+                var raw = match[0];
+                var latex, displayMode;
+
+                if (raw.startsWith('$$') && raw.endsWith('$$')) {
+                    latex = raw.slice(2, -2);
+                    displayMode = true;
+                } else if (raw.startsWith('\\[') && raw.endsWith('\\]')) {
+                    latex = raw.slice(2, -2);
+                    displayMode = true;
+                } else if (raw.startsWith('\\(') && raw.endsWith('\\)')) {
+                    latex = raw.slice(2, -2);
+                    displayMode = false;
+                } else {
+                    latex = raw.slice(1, -1);
+                    displayMode = false;
+                }
+
+                var el = document.createElement('span');
+                el.className = displayMode ? 'latex-display' : 'latex-inline';
+                try {
+                    katex.render(latex, el, {
+                        displayMode: displayMode,
+                        throwOnError: false,
+                        strict: false,
+                        trust: true
+                    });
+                } catch (e) {
+                    el.className = 'latex-error';
+                    el.textContent = raw;
+                }
+                formulaEl.appendChild(el);
+
+                lastIndex = pattern.lastIndex;
+            }
+
+            if (!hasFormulas) {
+                // No delimited formulas — render entire text as single formula (legacy)
+                formulaEl.className = '';
+                try {
+                    katex.render(text, formulaEl, {
+                        displayMode: true,
+                        throwOnError: false,
+                        strict: false,
+                        trust: true
+                    });
+                } catch (e) {
+                    formulaEl.textContent = text;
+                }
+                reportSize();
+                return;
+            }
+
+            // Remaining plain text after last match
+            if (lastIndex < text.length) {
+                var span = document.createElement('span');
+                span.className = 'plain-text';
+                span.textContent = text.substring(lastIndex);
+                formulaEl.appendChild(span);
+            }
+
+            formulaEl.className = 'mixed-content';
+            reportSize();
+        }
+
+        function reportSize() {
             var container = document.getElementById('container');
             var rect = container.getBoundingClientRect();
             window.webkit.messageHandlers.sizeHandler.postMessage(

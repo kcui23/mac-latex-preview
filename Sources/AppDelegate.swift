@@ -20,8 +20,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self, self.isEnabled else { return }
             DispatchQueue.main.async {
                 if let text = text, LatexDetector.containsLatex(text) {
-                    let (latex, displayMode) = LatexDetector.extractLatex(text)
-                    self.overlayWindow.renderLatex(latex, displayMode: displayMode)
+                    self.overlayWindow.renderMixedContent(text)
                 } else {
                     self.overlayWindow.hideOverlay()
                 }

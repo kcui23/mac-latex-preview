@@ -5,6 +5,7 @@ class OverlayWindow: NSPanel {
     private var webView: WKWebView!
     private var isWebViewReady = false
     private var pendingRender: (latex: String, displayMode: Bool)?
+    private var pendingMixedRender: String?
 
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 400, height: 150),
@@ -74,6 +75,38 @@ class OverlayWindow: NSPanel {
         }
     }
 
+    func renderMixedContent(_ text: String) {
+        guard isWebViewReady else {
+            pendingRender = nil
+            pendingMixedRender = text
+            return
+        }
+
+        let escaped = text
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "")
+
+        let js = "renderMixed('\(escaped)')"
+        webView.evaluateJavaScript(js) { _, error in
+            if let error = error {
+                print("JS error: \(error.localizedDescription)")
+            }
+        }
+
+        positionNearMouse()
+
+        if !self.isVisible {
+            self.alphaValue = 0
+            self.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.15
+                self.animator().alphaValue = 1
+            }
+        }
+    }
+
     func hideOverlay() {
         guard self.isVisible else { return }
         NSAnimationContext.runAnimationGroup { context in
@@ -110,7 +143,7 @@ class OverlayWindow: NSPanel {
               let height = dict["height"] else { return }
 
         let newWidth = max(100, min(width, 800))
-        let newHeight = max(50, min(height, 600))
+        let newHeight = max(50, min(height, 800))
 
         let origin = self.frame.origin
         self.setFrame(NSRect(x: origin.x, y: origin.y, width: newWidth, height: newHeight), display: true)
@@ -121,7 +154,11 @@ class OverlayWindow: NSPanel {
 extension OverlayWindow: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         isWebViewReady = true
-        if let pending = pendingRender {
+        if let text = pendingMixedRender {
+            pendingMixedRender = nil
+            pendingRender = nil
+            renderMixedContent(text)
+        } else if let pending = pendingRender {
             pendingRender = nil
             renderLatex(pending.latex, displayMode: pending.displayMode)
         }
